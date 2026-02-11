@@ -6,6 +6,16 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
@@ -33,6 +43,10 @@ bower_components
 
 # node-waf configuration
 .lock-wscript
+
+# Compiled output
+/dist
+/build
 
 # Compiled binary addons (https://nodejs.org/api/addons.html)
 build/Release
@@ -69,6 +83,7 @@ web_modules/
 .env
 .env.*
 !.env.example
+.env.local
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
