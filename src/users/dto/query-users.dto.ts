@@ -28,11 +28,11 @@ export class QueryUsersDto {
 
   @ApiPropertyOptional({
     example: 'createdAt',
-    enum: ['createdAt', 'email', 'username', 'name'],
+    enum: ['createdAt', 'email', 'username'],
   })
   @IsOptional()
   @IsString()
-  @IsIn(['createdAt', 'email', 'username', 'name'])
+  @IsIn(['createdAt', 'email', 'username'])
   sortBy?: string = 'createdAt';
 
   @ApiPropertyOptional({ example: 'desc', enum: ['asc', 'desc'] })

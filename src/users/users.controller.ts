@@ -60,7 +60,8 @@ export class UsersController {
   @ApiQuery({
     name: 'search',
     required: false,
-    description: 'Buscar por email, username, nombre o apellido',
+    description:
+      'Buscar por email, username, nombre (profile.name) o biografía (profile.bio)',
   })
   @ApiQuery({
     name: 'page',
@@ -77,7 +78,7 @@ export class UsersController {
   @ApiQuery({
     name: 'sortBy',
     required: false,
-    enum: ['createdAt', 'email', 'username', 'firstName', 'lastName'],
+    enum: ['createdAt', 'email', 'username'],
     description: 'Campo para ordenar',
   })
   @ApiQuery({
@@ -87,7 +88,13 @@ export class UsersController {
     description: 'Orden ascendente o descendente',
   })
   findAll(@Query() queryDto: QueryUsersDto) {
-    return this.usersService.findAll(queryDto);
+    return this.usersService.findAll(
+      queryDto.page,
+      queryDto.limit,
+      queryDto.search,
+      queryDto.sortBy,
+      queryDto.sortOrder,
+    );
   }
 
   @Get(':id')
