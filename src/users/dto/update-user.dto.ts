@@ -7,7 +7,7 @@ import {
   IsEnum,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { UpdateProfileDto } from './update-profile.dto';
+import { UpdateProfileDto } from '../../profile/dto/update-profile.dto';
 import { UserRole } from '../../common/enum/userRole-enum';
 
 export class UpdateUserDto {

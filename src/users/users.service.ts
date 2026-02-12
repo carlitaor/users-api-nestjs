@@ -7,44 +7,67 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
-import { User, UserDocument } from './entities/user.entity';
+import { User, UserDocument } from './schemas/user.schema';
+import { Profile, ProfileDocument } from '../profile/schemas/profile.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateProfileDto } from '../profile/dto/update-profile.dto';
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+  constructor(
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
+  ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     const normalizedEmail = createUserDto.email?.trim().toLowerCase();
     const normalizedUsername = createUserDto.username?.trim().toLowerCase();
-    // email único
+
     const existingEmail = await this.userModel.findOne({
       email: normalizedEmail,
     });
-    if (existingEmail) {
+    if (existingEmail)
       throw new ConflictException('El email ya está registrado');
-    }
 
-    // username único
     const existingUsername = await this.userModel.findOne({
       username: normalizedUsername,
     });
-    if (existingUsername) {
+    if (existingUsername)
       throw new ConflictException('El username ya está registrado');
-    }
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-    // usuario + perfil embebido
-    const createdUser = new this.userModel({
-      ...createUserDto,
+    // 1. Crear el perfil con los datos que vienen en createUserDto.profile
+    const createdProfile = await this.profileModel.create(
+      createUserDto.profile,
+    );
+
+    // 2. Crear el usuario con referencia al perfil
+    const createdUser = await this.userModel.create({
       email: normalizedEmail,
       username: normalizedUsername,
       password: hashedPassword,
+      role: createUserDto.role,
+      profile: createdProfile._id,
     });
-    return createdUser.save();
+
+    // 3. Guardar referencia inversa en el perfil
+    await this.profileModel.findByIdAndUpdate(createdProfile._id, {
+      user: createdUser._id,
+    });
+
+    const user = await this.userModel
+      .findById(createdUser._id)
+      .select('-password')
+      .populate('profile')
+      .exec();
+
+    if (!user) {
+      throw new NotFoundException('Error al recuperar el usuario creado');
+    }
+
+    return user;
   }
 
   async findAll(
@@ -53,51 +76,46 @@ export class UsersService {
     search?: string,
     sortBy?: string,
     sortOrder: 'asc' | 'desc' = 'desc',
-  ): Promise<{
-    users: User[];
-    total: number;
-    page: number;
-    totalPages: number;
-  }> {
+  ) {
     const skip = (page - 1) * limit;
 
-    // Función para escapar caracteres especiales de regex
-    const escapeRegex = (text: string): string => {
-      return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    };
+    const escapeRegex = (text: string): string =>
+      text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    interface MongoFilter {
-      $or?: Array<{
-        email?: { $regex: string; $options: string };
-        username?: { $regex: string; $options: string };
-        'profile.name'?: { $regex: string; $options: string };
-        'profile.bio'?: { $regex: string; $options: string };
-      }>;
-    }
-
-    const filter: MongoFilter = {};
+    const filter: Record<string, any> = {};
     if (search) {
       const escapedSearch = escapeRegex(search.trim());
+
+      // perfiles que coincidan
+      const matchingProfiles = await this.profileModel
+        .find({
+          $or: [
+            { firstName: { $regex: escapedSearch, $options: 'i' } },
+            { lastName: { $regex: escapedSearch, $options: 'i' } },
+            { bio: { $regex: escapedSearch, $options: 'i' } },
+          ],
+        })
+        .select('_id')
+        .exec();
+
+      const profileIds = matchingProfiles.map((p) => p._id);
+
       filter.$or = [
         { email: { $regex: escapedSearch, $options: 'i' } },
         { username: { $regex: escapedSearch, $options: 'i' } },
-        { 'profile.name': { $regex: escapedSearch, $options: 'i' } },
-        { 'profile.bio': { $regex: escapedSearch, $options: 'i' } },
+        { profile: { $in: profileIds } },
       ];
     }
 
-    // orden
     const sortOrderNum = sortOrder === 'asc' ? 1 : -1;
-    const sortField =
-      sortBy === 'name' ? 'profile.name' : sortBy || 'createdAt';
-    const sortObject: Record<string, 1 | -1> = {};
-    sortObject[sortField] = sortOrderNum;
+    const sortField = sortBy || 'createdAt';
+    const sortObject: Record<string, 1 | -1> = { [sortField]: sortOrderNum };
 
-    // consulta
     const [users, total] = await Promise.all([
       this.userModel
         .find(filter)
         .select('-password')
+        .populate('profile')
         .sort(sortObject)
         .skip(skip)
         .limit(limit)
@@ -105,63 +123,55 @@ export class UsersService {
       this.userModel.countDocuments(filter),
     ]);
 
-    return {
-      users,
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
-    };
+    return { users, total, page, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {
-    if (!Types.ObjectId.isValid(id)) {
+    if (!Types.ObjectId.isValid(id))
       throw new BadRequestException('ID inválido');
-    }
 
-    const user = await this.userModel.findById(id).select('-password').exec();
+    const user = await this.userModel
+      .findById(id)
+      .select('-password')
+      .populate('profile')
+      .exec();
 
-    if (!user) {
+    if (!user)
       throw new NotFoundException(`Usuario con ID ${id} no encontrado`);
-    }
 
     return user;
   }
 
   async findByEmail(email: string): Promise<UserDocument> {
     const user = await this.userModel.findOne({ email }).exec();
-
-    if (!user) {
-      throw new NotFoundException('Usuario no encontrado');
-    }
-
+    if (!user) throw new NotFoundException('Usuario no encontrado');
     return user;
   }
 
+  async findByEmailOptional(email: string) {
+    return this.userModel.findOne({ email }).exec();
+  }
+
   async update(id: string, updateUserDto: UpdateUserDto) {
-    if (!Types.ObjectId.isValid(id)) {
+    if (!Types.ObjectId.isValid(id))
       throw new BadRequestException('ID inválido');
-    }
 
     const user = await this.userModel.findById(id);
-    if (!user) {
+    if (!user)
       throw new NotFoundException(`Usuario con ID ${id} no encontrado`);
-    }
 
     if (updateUserDto.email) {
       updateUserDto.email = updateUserDto.email.trim().toLowerCase();
-      // email único
       if (updateUserDto.email !== user.email) {
         const existingEmail = await this.userModel.findOne({
           email: updateUserDto.email,
           _id: { $ne: id },
         });
-        if (existingEmail) {
+        if (existingEmail)
           throw new ConflictException('El email ya está registrado');
-        }
       }
     }
 
-    // username único
     if (updateUserDto.username) {
       updateUserDto.username = updateUserDto.username.trim().toLowerCase();
       if (updateUserDto.username !== user.username) {
@@ -169,75 +179,67 @@ export class UsersService {
           username: updateUserDto.username,
           _id: { $ne: id },
         });
-        if (existingUsername) {
+        if (existingUsername)
           throw new ConflictException('El username ya está en uso');
-        }
       }
     }
 
-    const updateData: Partial<UpdateUserDto> = { ...updateUserDto };
+    // Separás los datos del perfil del resto del DTO
+    const { profile: profileData, ...userFields } = updateUserDto;
 
-    // perfil embebido
-    if (updateUserDto.profile && user.profile) {
-      updateData.profile = {
-        name: updateUserDto.profile.name ?? user.profile.name,
-        bio: updateUserDto.profile.bio ?? user.profile.bio,
-      };
+    // Actualizar datos del usuario (email, username, role)
+    await this.userModel.findByIdAndUpdate(id, userFields, { new: true });
+
+    // Actualizar perfil en su colección si vienen datos de perfil
+    if (profileData && user.profile) {
+      await this.profileModel.findByIdAndUpdate(
+        user.profile,
+        { $set: profileData },
+        { new: true, runValidators: true },
+      );
     }
 
-    // actualizacion
-    const updatedUser = await this.userModel
-      .findByIdAndUpdate(id, updateData, { new: true })
+    // Retornar usuario con perfil actualizado
+    return this.userModel
+      .findById(id)
       .select('-password')
+      .populate('profile')
       .exec();
-
-    return updatedUser;
   }
 
   async updateProfile(userId: string, updateProfileDto: UpdateProfileDto) {
-    if (!Types.ObjectId.isValid(userId)) {
+    if (!Types.ObjectId.isValid(userId))
       throw new BadRequestException('ID inválido');
-    }
 
-    const existingUser = await this.userModel.findById(userId).exec();
-    if (!existingUser) {
-      throw new NotFoundException('Usuario no encontrado');
-    }
-    const currentProfile = existingUser.profile || {};
-    const mergedProfile = {
-      name: updateProfileDto.name ?? currentProfile.name,
-      bio: updateProfileDto.bio ?? currentProfile.bio,
-    };
-    const user = await this.userModel
+    const user = await this.userModel.findById(userId).exec();
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const updatedProfile = await this.profileModel
       .findByIdAndUpdate(
-        userId,
-        { $set: { profile: mergedProfile } },
+        user.profile,
+        { $set: updateProfileDto },
         { new: true, runValidators: true },
       )
       .exec();
-    if (!user) {
-      throw new NotFoundException('Usuario no encontrado');
-    }
 
-    return user.profile;
+    if (!updatedProfile) throw new NotFoundException('Perfil no encontrado');
+
+    return updatedProfile;
   }
 
   async remove(id: string) {
-    if (!Types.ObjectId.isValid(id)) {
+    if (!Types.ObjectId.isValid(id))
       throw new BadRequestException('ID inválido');
-    }
 
     const user = await this.userModel.findById(id);
-    if (!user) {
+    if (!user)
       throw new NotFoundException(`Usuario con ID ${id} no encontrado`);
-    }
 
-    // eliminar usuario (perfil embebido se elimina automáticamente)
-    await this.userModel.findByIdAndDelete(id);
+    await Promise.all([
+      this.userModel.findByIdAndDelete(id),
+      this.profileModel.findByIdAndDelete(user.profile),
+    ]);
 
-    return {
-      message: 'Usuario eliminado exitosamente',
-      id,
-    };
+    return { message: 'Usuario eliminado exitosamente', id };
   }
 }

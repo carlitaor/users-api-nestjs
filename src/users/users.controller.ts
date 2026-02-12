@@ -9,7 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
-  // UseGuards,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -17,15 +17,16 @@ import {
   ApiResponse,
   ApiParam,
   ApiQuery,
-  // ApiBearerAuth,
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUsersDto } from './dto/query-users.dto';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { UpdateProfileDto } from '../profile/dto/update-profile.dto';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('users')
+@UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}

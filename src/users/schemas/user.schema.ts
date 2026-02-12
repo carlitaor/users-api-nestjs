@@ -1,21 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 import { UserRole } from '../../common/enum/userRole-enum';
 
 export type UserDocument = User & Document;
-
-// profile embebido
-@Schema({ _id: false })
-export class Profile {
-  @Prop({ required: true, trim: true })
-  name!: string;
-
-  @Prop({ trim: true, maxlength: 500 })
-  bio?: string;
-}
-
-export const ProfileSchema = SchemaFactory.createForClass(Profile);
-
 @Schema({ timestamps: true })
 export class User {
   @Prop({ required: true, trim: true, lowercase: true })
@@ -33,12 +20,11 @@ export class User {
   @Prop({ default: true })
   isActive!: boolean;
 
-  @Prop({ type: ProfileSchema, required: true })
-  profile!: Profile;
+  @Prop({ type: Types.ObjectId, ref: 'Profile', required: true })
+  profile!: Types.ObjectId;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
 UserSchema.index({ email: 1 }, { unique: true });
 UserSchema.index({ username: 1 }, { unique: true });
-UserSchema.index({ 'profile.name': 'text', 'profile.bio': 'text' });
