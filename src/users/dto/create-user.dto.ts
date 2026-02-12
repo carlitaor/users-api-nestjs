@@ -8,8 +8,8 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { CreateProfileDto } from './create-profile.dto';
 import { UserRole } from '../../common/enum/userRole-enum';
+import { CreateProfileDto } from '../../profile/dto/create-profile.dto';
 
 export class CreateUserDto {
   @ApiProperty({ example: 'john.doe@example.com' })
