@@ -10,17 +10,18 @@ import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from './entities/user.entity';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { QueryUsersDto } from './dto/query-users.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 @Injectable()
 export class UsersService {
   constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
 
-  async create(createUserDto: CreateUserDto) {
+  async create(createUserDto: CreateUserDto): Promise<User> {
+    const normalizedEmail = createUserDto.email?.trim().toLowerCase();
+    const normalizedUsername = createUserDto.username?.trim().toLowerCase();
     // email único
     const existingEmail = await this.userModel.findOne({
-      email: createUserDto.email,
+      email: normalizedEmail,
     });
     if (existingEmail) {
       throw new ConflictException('El email ya está registrado');
@@ -28,58 +29,69 @@ export class UsersService {
 
     // username único
     const existingUsername = await this.userModel.findOne({
-      username: createUserDto.username,
+      username: normalizedUsername,
     });
     if (existingUsername) {
-      throw new ConflictException('El username ya está en uso');
+      throw new ConflictException('El username ya está registrado');
     }
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
     // usuario + perfil embebido
-    const user = new this.userModel({
-      email: createUserDto.email,
+    const createdUser = new this.userModel({
+      ...createUserDto,
+      email: normalizedEmail,
+      username: normalizedUsername,
       password: hashedPassword,
-      username: createUserDto.username,
-      role: createUserDto.role,
-      profile: createUserDto.profile,
     });
-
-    const savedUser = await user.save();
-
-    // return sin la contraseña
-    return this.userModel.findById(savedUser._id).select('-password').exec();
+    return createdUser.save();
   }
 
-  async findAll(queryDto: QueryUsersDto) {
-    const {
-      search,
-      page = 1,
-      limit = 10,
-      sortBy = 'createdAt',
-      sortOrder = 'desc',
-    } = queryDto;
+  async findAll(
+    page: number = 1,
+    limit: number = 10,
+    search?: string,
+    sortBy?: string,
+    sortOrder: 'asc' | 'desc' = 'desc',
+  ): Promise<{
+    users: User[];
+    total: number;
+    page: number;
+    totalPages: number;
+  }> {
+    const skip = (page - 1) * limit;
 
-    //filtro de búsqueda
-    let filter: any = {};
+    // Función para escapar caracteres especiales de regex
+    const escapeRegex = (text: string): string => {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    };
 
-    if (search) {
-      filter = {
-        $or: [
-          { email: { $regex: search, $options: 'i' } },
-          { username: { $regex: search, $options: 'i' } },
-          { 'profile.name': { $regex: search, $options: 'i' } },
-          { 'profile.bio': { $regex: search, $options: 'i' } },
-        ],
-      };
+    interface MongoFilter {
+      $or?: Array<{
+        email?: { $regex: string; $options: string };
+        username?: { $regex: string; $options: string };
+        'profile.name'?: { $regex: string; $options: string };
+        'profile.bio'?: { $regex: string; $options: string };
+      }>;
     }
 
-    // skip para paginación
-    const skip = (page - 1) * limit;
+    const filter: MongoFilter = {};
+    if (search) {
+      const escapedSearch = escapeRegex(search.trim());
+      filter.$or = [
+        { email: { $regex: escapedSearch, $options: 'i' } },
+        { username: { $regex: escapedSearch, $options: 'i' } },
+        { 'profile.name': { $regex: escapedSearch, $options: 'i' } },
+        { 'profile.bio': { $regex: escapedSearch, $options: 'i' } },
+      ];
+    }
 
     // orden
     const sortOrderNum = sortOrder === 'asc' ? 1 : -1;
-    const sortObject: any = { [sortBy]: sortOrderNum };
+    const sortField =
+      sortBy === 'name' ? 'profile.name' : sortBy || 'createdAt';
+    const sortObject: Record<string, 1 | -1> = {};
+    sortObject[sortField] = sortOrderNum;
 
     // consulta
     const [users, total] = await Promise.all([
@@ -94,13 +106,10 @@ export class UsersService {
     ]);
 
     return {
-      data: users,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
+      users,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
     };
   }
 
@@ -138,25 +147,31 @@ export class UsersService {
       throw new NotFoundException(`Usuario con ID ${id} no encontrado`);
     }
 
-    // email único
-    if (updateUserDto.email && updateUserDto.email !== user.email) {
-      const existingEmail = await this.userModel.findOne({
-        email: updateUserDto.email,
-        _id: { $ne: id },
-      });
-      if (existingEmail) {
-        throw new ConflictException('El email ya está registrado');
+    if (updateUserDto.email) {
+      updateUserDto.email = updateUserDto.email.trim().toLowerCase();
+      // email único
+      if (updateUserDto.email !== user.email) {
+        const existingEmail = await this.userModel.findOne({
+          email: updateUserDto.email,
+          _id: { $ne: id },
+        });
+        if (existingEmail) {
+          throw new ConflictException('El email ya está registrado');
+        }
       }
     }
 
     // username único
-    if (updateUserDto.username && updateUserDto.username !== user.username) {
-      const existingUsername = await this.userModel.findOne({
-        username: updateUserDto.username,
-        _id: { $ne: id },
-      });
-      if (existingUsername) {
-        throw new ConflictException('El username ya está en uso');
+    if (updateUserDto.username) {
+      updateUserDto.username = updateUserDto.username.trim().toLowerCase();
+      if (updateUserDto.username !== user.username) {
+        const existingUsername = await this.userModel.findOne({
+          username: updateUserDto.username,
+          _id: { $ne: id },
+        });
+        if (existingUsername) {
+          throw new ConflictException('El username ya está en uso');
+        }
       }
     }
 
@@ -180,12 +195,26 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, updateProfileDto: UpdateProfileDto) {
-    const user = await this.userModel.findByIdAndUpdate(
-      userId,
-      { $set: { profile: updateProfileDto } },
-      { new: true },
-    );
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('ID inválido');
+    }
 
+    const existingUser = await this.userModel.findById(userId).exec();
+    if (!existingUser) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+    const currentProfile = existingUser.profile || {};
+    const mergedProfile = {
+      name: updateProfileDto.name ?? currentProfile.name,
+      bio: updateProfileDto.bio ?? currentProfile.bio,
+    };
+    const user = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        { $set: { profile: mergedProfile } },
+        { new: true, runValidators: true },
+      )
+      .exec();
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
     }
