@@ -16,6 +16,9 @@ export class User {
     example: 'john.doe@example.com',
     description: 'Email único del usuario',
   })
+  // trim y lowercase a nivel de schema: garantiza la normalización de datos
+  // incluso si se insertan directamente en la base de datos sin pasar por el servicio.
+  // Es una capa de defensa adicional a la normalización que se hace en el servicio.
   @Prop({ required: true, trim: true, lowercase: true })
   email!: string;
 
@@ -26,6 +29,8 @@ export class User {
   @Prop({ required: true, trim: true })
   username!: string;
 
+  // El campo password no tiene decorador @ApiProperty intencionalmente
+  // para que no aparezca en la documentación de Swagger y no se exponga en los esquemas de respuesta.
   @Prop({ required: true })
   password!: string;
 
@@ -40,6 +45,10 @@ export class User {
     description: 'Perfil asociado al usuario',
     type: () => String,
   })
+  // Relación 1:1 con Profile usando ObjectId y ref.
+  // Decisión: separar User y Profile en colecciones distintas para respetar
+  // el principio de responsabilidad única (datos de autenticación vs datos personales)
+  // y permitir actualizar el perfil sin tocar el documento de usuario.
   @Prop({ type: Types.ObjectId, ref: 'Profile', required: true })
   profile!: Types.ObjectId;
 }

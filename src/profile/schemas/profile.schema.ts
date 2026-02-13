@@ -20,6 +20,8 @@ export class Profile {
   @Prop({ required: true })
   lastName!: string;
 
+  // Campos opcionales del perfil: permiten un registro inicial rápido (solo firstName y lastName)
+  // y que el usuario complete su información personal progresivamente.
   @ApiPropertyOptional({
     example: 'https://example.com/avatar.jpg',
     description: 'URL del avatar',

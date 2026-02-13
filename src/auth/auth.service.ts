@@ -22,11 +22,9 @@ export class AuthService {
       throw new UnauthorizedException('El usuario ya existe');
     }
 
-    // Crear el usuario
     const user = (await this.usersService.create(createUserDto)) as User &
       Document;
 
-    // Generar token
     const token = this.generateToken(user._id.toString(), user.email);
 
     // Devolver sin la password
@@ -46,6 +44,8 @@ export class AuthService {
   async signIn(loginDto: LoginDto) {
     const user = await this.usersService.findByEmailOptional(loginDto.email);
     if (!user) {
+      // Mensaje genérico "Credenciales inválidas" tanto si el email no existe
+      // como si la contraseña es incorrecta para no revelar si un email está registrado
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
@@ -58,13 +58,11 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    // Generar token
     const token = this.generateToken(
       (user as User & Document)._id.toString(),
       user.email,
     );
 
-    // Devolver sin la password
     const userObject = (user as User & Document).toObject() as Omit<
       User,
       'password'
