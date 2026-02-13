@@ -5,23 +5,23 @@ export type ProfileDocument = Profile & Document;
 
 @Schema({ timestamps: true })
 export class Profile {
-  @Prop()
+  @Prop({ required: true })
   firstName!: string;
 
-  @Prop()
+  @Prop({ required: true })
   lastName!: string;
 
-  @Prop()
-  avatar!: string;
+  @Prop({ required: false })
+  avatar?: string;
 
-  @Prop()
-  bio!: string;
+  @Prop({ required: false })
+  bio?: string;
 
-  @Prop()
-  phoneNumber!: string;
+  @Prop({ required: false })
+  phoneNumber?: string;
 
-  @Prop()
-  country!: string;
+  @Prop({ required: false })
+  country?: string;
 
   @Prop({ type: Types.ObjectId, ref: 'User' })
   user!: Types.ObjectId;

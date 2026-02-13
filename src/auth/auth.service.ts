@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
@@ -15,12 +15,11 @@ export class AuthService {
   ) {}
 
   async signUp(createUserDto: CreateUserDto) {
-    // Verificar si el usuario ya existe
     const existingUser = await this.usersService.findByEmailOptional(
       createUserDto.email,
     );
     if (existingUser) {
-      throw new BadRequestException('El usuario ya existe');
+      throw new UnauthorizedException('El usuario ya existe');
     }
 
     // Crear el usuario
@@ -28,11 +27,7 @@ export class AuthService {
       Document;
 
     // Generar token
-    const token = this.generateToken(
-      user._id.toString(),
-      user.email,
-      user.role,
-    );
+    const token = this.generateToken(user._id.toString(), user.email);
 
     // Devolver sin la password
     const userObject = user.toObject() as Omit<User, 'password'> & {
@@ -49,29 +44,31 @@ export class AuthService {
   }
 
   async signIn(loginDto: LoginDto) {
-    // Buscar el usuario por email
-    const user = (await this.usersService.findByEmail(loginDto.email)) as User &
-      Document;
+    const user = await this.usersService.findByEmailOptional(loginDto.email);
+    if (!user) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
 
-    // Comparar la password
     const isPasswordValid = await bcrypt.compare(
       loginDto.password,
       user.password,
     );
 
     if (!isPasswordValid) {
-      throw new BadRequestException('Credenciales inválidas');
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
     // Generar token
     const token = this.generateToken(
-      user._id.toString(),
+      (user as User & Document)._id.toString(),
       user.email,
-      user.role,
     );
 
     // Devolver sin la password
-    const userObject = user.toObject() as Omit<User, 'password'> & {
+    const userObject = (user as User & Document).toObject() as Omit<
+      User,
+      'password'
+    > & {
       password: string;
     };
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -84,11 +81,10 @@ export class AuthService {
     };
   }
 
-  private generateToken(userId: string, email: string, role: string) {
+  private generateToken(userId: string, email: string) {
     const payload = {
       sub: userId,
       email,
-      role,
     };
     return this.jwtService.sign(payload);
   }
