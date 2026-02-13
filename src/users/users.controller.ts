@@ -129,14 +129,8 @@ export class UsersController {
     status: 401,
     description: 'No autorizado. Token JWT inválido o no proporcionado.',
   })
-  findAll(@Query() queryDto: QueryUsersDto) {
-    return this.usersService.findAll(
-      queryDto.page,
-      queryDto.limit,
-      queryDto.search,
-      queryDto.sortBy,
-      queryDto.sortOrder,
-    );
+  findAll(@Query() query: QueryUsersDto) {
+    return this.usersService.findAll(query);
   }
 
   @Get(':id')

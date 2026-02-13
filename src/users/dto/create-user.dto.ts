@@ -14,16 +14,16 @@ export class CreateUserDto {
     example: 'john.doe@example.com',
     description: 'Email único del usuario. Se normaliza a minúsculas.',
   })
-  @IsEmail()
-  @IsNotEmpty()
+  @IsEmail({}, { message: 'El email debe ser válido' })
+  @IsNotEmpty({ message: 'El email es obligatorio' })
   email!: string;
 
   @ApiProperty({
     example: 'johndoe123',
     description: 'Nombre de usuario único. Se normaliza a minúsculas.',
   })
-  @IsString()
-  @IsNotEmpty()
+  @IsString({ message: 'El username debe ser un texto' })
+  @IsNotEmpty({ message: 'El username es obligatorio' })
   username!: string;
 
   @ApiProperty({
@@ -31,8 +31,8 @@ export class CreateUserDto {
     description: 'Contraseña del usuario. Mínimo 8 caracteres.',
     minLength: 8,
   })
-  @IsString()
-  @MinLength(8)
+  @IsString({ message: 'La contraseña debe ser un texto' })
+  @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
   password!: string;
 
   @ApiProperty({
