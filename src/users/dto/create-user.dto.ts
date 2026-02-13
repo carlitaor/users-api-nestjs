@@ -3,12 +3,10 @@ import {
   IsNotEmpty,
   IsString,
   MinLength,
-  IsEnum,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { UserRole } from '../../common/enum/userRole-enum';
 import { CreateProfileDto } from '../../profile/dto/create-profile.dto';
 
 export class CreateUserDto {
@@ -26,10 +24,6 @@ export class CreateUserDto {
   @IsString()
   @MinLength(8)
   password!: string;
-
-  @ApiProperty({ enum: UserRole, example: UserRole.USER })
-  @IsEnum(UserRole)
-  role!: UserRole;
 
   @ApiProperty({ type: CreateProfileDto })
   @ValidateNested()

@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -12,12 +13,15 @@ import { Profile, ProfileDocument } from '../profile/schemas/profile.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateProfileDto } from '../profile/dto/update-profile.dto';
+import { InjectConnection } from '@nestjs/mongoose';
+import { Connection } from 'mongoose';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Profile.name) private profileModel: Model<ProfileDocument>,
+    @InjectConnection() private connection: Connection,
   ) {}
 
   async create(createUserDto: CreateUserDto): Promise<User> {
@@ -38,36 +42,70 @@ export class UsersService {
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-    // 1. Crear el perfil con los datos que vienen en createUserDto.profile
-    const createdProfile = await this.profileModel.create(
-      createUserDto.profile,
-    );
+    // Usar transacción para atomicidad
+    const session = await this.connection.startSession();
+    session.startTransaction();
 
-    // 2. Crear el usuario con referencia al perfil
-    const createdUser = await this.userModel.create({
-      email: normalizedEmail,
-      username: normalizedUsername,
-      password: hashedPassword,
-      role: createUserDto.role,
-      profile: createdProfile._id,
-    });
+    try {
+      // 1. Crear el perfil dentro de la transacción
+      const [createdProfile] = await this.profileModel.create(
+        [createUserDto.profile],
+        { session },
+      );
 
-    // 3. Guardar referencia inversa en el perfil
-    await this.profileModel.findByIdAndUpdate(createdProfile._id, {
-      user: createdUser._id,
-    });
+      // 2. Crear el usuario con referencia al perfil
+      const [createdUser] = await this.userModel.create(
+        [
+          {
+            email: normalizedEmail,
+            username: normalizedUsername,
+            password: hashedPassword,
+            profile: createdProfile._id,
+          },
+        ],
+        { session },
+      );
 
-    const user = await this.userModel
-      .findById(createdUser._id)
-      .select('-password')
-      .populate('profile')
-      .exec();
+      // 3. Guardar referencia inversa en el perfil
+      await this.profileModel.findByIdAndUpdate(
+        createdProfile._id,
+        { user: createdUser._id },
+        { session },
+      );
 
-    if (!user) {
-      throw new NotFoundException('Error al recuperar el usuario creado');
+      // Confirmar la transacción
+      await session.commitTransaction();
+
+      // Obtener el usuario con el perfil poblado
+      const user = await this.userModel
+        .findById(createdUser._id)
+        .select('-password')
+        .populate('profile')
+        .exec();
+
+      if (!user) {
+        throw new NotFoundException('Error al recuperar el usuario creado');
+      }
+
+      return user;
+    } catch (error) {
+      // Revertir la transacción en caso de error
+      await session.abortTransaction();
+
+      // Re-lanzar el error apropiado
+      if (
+        error instanceof ConflictException ||
+        error instanceof NotFoundException
+      ) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        'Error al crear el usuario y perfil',
+      );
+    } finally {
+      session.endSession();
     }
-
-    return user;
   }
 
   async findAll(
@@ -143,13 +181,17 @@ export class UsersService {
   }
 
   async findByEmail(email: string): Promise<UserDocument> {
-    const user = await this.userModel.findOne({ email }).exec();
+    const normalizedEmail = email?.trim().toLowerCase();
+    const user = await this.userModel
+      .findOne({ email: normalizedEmail })
+      .exec();
     if (!user) throw new NotFoundException('Usuario no encontrado');
     return user;
   }
 
   async findByEmailOptional(email: string) {
-    return this.userModel.findOne({ email }).exec();
+    const normalizedEmail = email?.trim().toLowerCase();
+    return this.userModel.findOne({ email: normalizedEmail }).exec();
   }
 
   async update(id: string, updateUserDto: UpdateUserDto) {
@@ -187,7 +229,7 @@ export class UsersService {
     // Separás los datos del perfil del resto del DTO
     const { profile: profileData, ...userFields } = updateUserDto;
 
-    // Actualizar datos del usuario (email, username, role)
+    // Actualizar datos del usuario (email, username)
     await this.userModel.findByIdAndUpdate(id, userFields, { new: true });
 
     // Actualizar perfil en su colección si vienen datos de perfil
