@@ -23,11 +23,42 @@ async function bootstrap() {
   );
 
   const config = new DocumentBuilder()
-    .setTitle('Users API - Global')
-    .setDescription('API para gestionar usuarios y perfiles')
+    .setTitle('Users API')
+    .setDescription(
+      `## API RESTful para gestión de usuarios y perfiles con autenticación JWT.
+
+### 🔐 Autenticación
+1. Registra un usuario en **POST /auth/signup**
+2. Inicia sesión en **POST /auth/signin** para obtener un token JWT
+3. Haz clic en el botón **"Authorize"** (🔓) arriba y pega el token
+4. Ahora puedes acceder a los endpoints protegidos de **/users**
+
+### 📋 Flujo de prueba sugerido
+1. \`POST /auth/signup\` → Crear cuenta
+2. \`POST /auth/signin\` → Obtener token
+3. Authorize con el token
+4. \`GET /users\` → Listar usuarios
+5. \`GET /users/:id\` → Ver detalle
+6. \`PATCH /users/:id\` → Actualizar
+7. \`DELETE /users/:id\` → Eliminar`,
+    )
     .setVersion('1.0')
-    .addBearerAuth()
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        bearerFormat: 'JWT',
+        name: 'JWT',
+        description: 'Ingresa tu token JWT obtenido en /auth/signin',
+        in: 'header',
+      },
+      'access-token',
+    )
+    .addTag('Auth', 'Endpoints de autenticación (registro e inicio de sesión)')
+    .addTag('Users', 'CRUD de usuarios (requiere autenticación JWT)')
+    .addTag('Profiles', 'Gestión de perfiles')
     .build();
+
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
 

@@ -1,8 +1,30 @@
 version: '3.8'
 
 services:
+  # === Servicio de la API ===
+  users-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: users-api-app
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/users-api?replicaSet=rs0
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - users-api-network
+
+  # === Base de datos MongoDB ===
   mongodb:
-    image: mongo:7.0
+    image: mongo:7
+    command: ['--replSet', 'rs0']
     container_name: users-api-mongodb
     restart: unless-stopped
     ports:
@@ -13,7 +35,20 @@ services:
       - mongodb_data:/data/db
     networks:
       - users-api-network
+    healthcheck:
+      test: |
+        mongosh --eval "
+        try {
+          rs.status().ok
+        } catch(e) {
+          rs.initiate({_id:'rs0', members:[{_id:0, host:'mongodb:27017'}]}).ok
+        }"
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
 
+  # === Panel de administración de MongoDB ===
   mongo-express:
     image: mongo-express:latest
     container_name: users-api-mongo-express
