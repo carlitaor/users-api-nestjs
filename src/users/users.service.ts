@@ -15,6 +15,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateProfileDto } from '../profile/dto/update-profile.dto';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Connection } from 'mongoose';
+import { QueryUsersDto } from './dto/query-users.dto';
 
 @Injectable()
 export class UsersService {
@@ -108,13 +109,14 @@ export class UsersService {
     }
   }
 
-  async findAll(
-    page: number = 1,
-    limit: number = 10,
-    search?: string,
-    sortBy?: string,
-    sortOrder: 'asc' | 'desc' = 'desc',
-  ) {
+  async findAll(query: QueryUsersDto) {
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+    } = query;
     const skip = (page - 1) * limit;
 
     const escapeRegex = (text: string): string =>

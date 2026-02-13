@@ -126,13 +126,12 @@ describe('UsersService', () => {
     });
 
     it('debe lanzar ConflictException si el email ya existe', async () => {
-      mockUserModel.findOne.mockResolvedValueOnce({ email: 'test@example.com' });
+      mockUserModel.findOne.mockResolvedValueOnce({
+        email: 'test@example.com',
+      });
 
       await expect(service.create(createUserDto)).rejects.toThrow(
-        ConflictException,
-      );
-      await expect(service.create(createUserDto)).rejects.toThrow(
-        'El email ya está registrado',
+        new ConflictException('El email ya está registrado'),
       );
     });
 
@@ -142,10 +141,7 @@ describe('UsersService', () => {
         .mockResolvedValueOnce({ username: 'testuser' }); // username existe
 
       await expect(service.create(createUserDto)).rejects.toThrow(
-        ConflictException,
-      );
-      await expect(service.create(createUserDto)).rejects.toThrow(
-        'El username ya está registrado',
+        new ConflictException('El username ya está registrado'),
       );
     });
 
@@ -215,7 +211,7 @@ describe('UsersService', () => {
       });
       mockUserModel.countDocuments.mockResolvedValue(10);
 
-      const result = await service.findAll(1, 2);
+      const result = await service.findAll({ page: 1, limit: 2 });
 
       expect(result.users).toEqual(mockUsers);
       expect(result.total).toBe(10);
@@ -242,7 +238,7 @@ describe('UsersService', () => {
       });
       mockUserModel.countDocuments.mockResolvedValue(1);
 
-      await service.findAll(1, 10, 'john');
+      await service.findAll({ page: 1, limit: 10, search: 'john' });
 
       expect(mockProfileModel.find).toHaveBeenCalled();
     });
@@ -258,7 +254,12 @@ describe('UsersService', () => {
       });
       mockUserModel.countDocuments.mockResolvedValue(0);
 
-      await service.findAll(1, 10, undefined, 'email', 'asc');
+      await service.findAll({
+        page: 1,
+        limit: 10,
+        sortBy: 'email',
+        sortOrder: 'asc',
+      });
 
       const findChain = mockUserModel.find();
       expect(findChain.sort).toHaveBeenCalled();
@@ -296,9 +297,9 @@ describe('UsersService', () => {
         exec: jest.fn().mockResolvedValue(null),
       });
 
-      await expect(
-        service.findOne('507f1f77bcf86cd799439011'),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('507f1f77bcf86cd799439011')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
@@ -417,7 +418,9 @@ describe('UsersService', () => {
       };
 
       mockUserModel.findById.mockResolvedValue(mockUser);
-      mockUserModel.findOne.mockResolvedValue({ email: 'newemail@example.com' });
+      mockUserModel.findOne.mockResolvedValue({
+        email: 'newemail@example.com',
+      });
 
       await expect(service.update(userId, updateDto)).rejects.toThrow(
         ConflictException,
