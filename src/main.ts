@@ -10,10 +10,19 @@ async function bootstrap() {
 
   app.enableCors();
 
+  // Filtro global de excepciones: centraliza el manejo de errores en un único punto,
+  // garantizando un formato de respuesta consistente (statusCode, timestamp, path, method, error, message)
+  // para cualquier tipo de excepción (HTTP, Mongoose, errores inesperados).
   app.useGlobalFilters(new AllExceptionsFilter());
 
+  // Interceptor global de logging: registra método HTTP, URL, status code y tiempo de respuesta
+  // de cada petición. Facilita el debugging y monitoreo sin depender de herramientas externas.
   app.useGlobalInterceptors(new LoggingInterceptor());
 
+  // ValidationPipe global con tres opciones clave:
+  // - whitelist: elimina automáticamente propiedades no decoradas en los DTOs (previene inyección de campos no esperados)
+  // - forbidNonWhitelisted: rechaza la petición si se envían campos no definidos en el DTO (seguridad adicional)
+  // - transform: convierte automáticamente los payloads a instancias de los DTOs y transforma tipos (ej: string a number en query params)
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -22,6 +31,9 @@ async function bootstrap() {
     }),
   );
 
+  // Configuración de Swagger/OpenAPI para documentación interactiva.
+  // Se incluye autenticación Bearer JWT para poder probar endpoints protegidos directamente desde la UI.
+  // El identificador 'access-token' se referencia en los controladores con @ApiBearerAuth('access-token').
   const config = new DocumentBuilder()
     .setTitle('Users API')
     .setDescription(

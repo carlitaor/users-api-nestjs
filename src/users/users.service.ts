@@ -43,18 +43,21 @@ export class UsersService {
 
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-    // Usar transacción para atomicidad
+    // Transacción de MongoDB para garantizar atomicidad: si falla la creación del usuario
+    // después de crear el perfil, se revierte todo. Esto previene datos huérfanos
+    // (perfiles sin usuario asociado). Requiere MongoDB con Replica Set configurado.
     const session = await this.connection.startSession();
     session.startTransaction();
 
     try {
-      // 1. Crear el perfil dentro de la transacción
+      // Crear el perfil primero porque el usuario necesita la referencia al perfil.
+      // Se usa create() con array y session para que forme parte de la transacción.
       const [createdProfile] = await this.profileModel.create(
         [createUserDto.profile],
         { session },
       );
 
-      // 2. Crear el usuario con referencia al perfil
+      //Crear el usuario con la referencia al perfil recién creado.
       const [createdUser] = await this.userModel.create(
         [
           {
@@ -67,17 +70,17 @@ export class UsersService {
         { session },
       );
 
-      // 3. Guardar referencia inversa en el perfil
+      // Referencia inversa - guardar el ID del usuario en el perfil.
+      // Permite navegar la relación bidireccional (User -> Profile y Profile -> User).
       await this.profileModel.findByIdAndUpdate(
         createdProfile._id,
         { user: createdUser._id },
         { session },
       );
 
-      // Confirmar la transacción
       await session.commitTransaction();
 
-      // Obtener el usuario con el perfil poblado
+      // Se excluye el campo password con select('-password') por seguridad.
       const user = await this.userModel
         .findById(createdUser._id)
         .select('-password')
@@ -90,10 +93,10 @@ export class UsersService {
 
       return user;
     } catch (error) {
-      // Revertir la transacción en caso de error
+      // Rollback automático: si cualquier operación dentro del try falla,
+      // se aborta la transacción y se revierten todos los cambios.
       await session.abortTransaction();
 
-      // Re-lanzar el error apropiado
       if (
         error instanceof ConflictException ||
         error instanceof NotFoundException
@@ -105,6 +108,8 @@ export class UsersService {
         'Error al crear el usuario y perfil',
       );
     } finally {
+      // Cerrar la sesión, independientemente del resultado,
+      // para liberar recursos del connection pool de MongoDB.
       session.endSession();
     }
   }
@@ -126,7 +131,9 @@ export class UsersService {
     if (search) {
       const escapedSearch = escapeRegex(search.trim());
 
-      // perfiles que coincidan
+      // Estrategia de búsqueda porque User y Profile están en colecciones separadas:
+      // 1. Buscar perfiles que coincidan con el término (firstName, lastName, bio)
+      // 2. Incluir los IDs de esos perfiles en el filtro de usuarios
       const matchingProfiles = await this.profileModel
         .find({
           $or: [
@@ -228,13 +235,12 @@ export class UsersService {
       }
     }
 
-    // Separás los datos del perfil del resto del DTO
+    // Desestructuración para separar datos para actualizar User y Profile de forma independiente
+
     const { profile: profileData, ...userFields } = updateUserDto;
 
-    // Actualizar datos del usuario (email, username)
     await this.userModel.findByIdAndUpdate(id, userFields, { new: true });
 
-    // Actualizar perfil en su colección si vienen datos de perfil
     if (profileData && user.profile) {
       await this.profileModel.findByIdAndUpdate(
         user.profile,
@@ -243,7 +249,6 @@ export class UsersService {
       );
     }
 
-    // Retornar usuario con perfil actualizado
     return this.userModel
       .findById(id)
       .select('-password')
